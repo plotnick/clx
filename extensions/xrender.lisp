@@ -51,9 +51,6 @@
 ;;   rasterization library you obviously want high performance entry points as
 ;;   RENDER-TRIANGLES-1.
 
-;; - We want to extend XLIB:COLOR into something with alpha channel.  How to
-;;   name it? -- maybe XLIB:COLOR*?
-
 ;; - WITH-UNIFORM-COLOR-PICTURE (var picture r g b &optional alpha) &body body
 ;;
 ;;   Example:
@@ -79,6 +76,14 @@
 ;; Beginning to collect the external interface for documentation.
 (export '(render-create-picture
           render-free-picture
+
+          render-make-color
+          render-color
+          render-color-p
+          render-color-red
+          render-color-green
+          render-color-blue
+          render-color-alpha
 
           render-create-glyph-set
           render-reference-glyph-set
@@ -288,6 +293,40 @@
 
 
 ;;;;
+
+(def-clx-class (render-color
+                (:constructor render-make-color-internal (red green blue alpha))
+                (:copier nil) (:print-function print-render-color))
+  (red 0.0 :type rgb-val)
+  (green 0.0 :type rgb-val)
+  (blue 0.0 :type rgb-val)
+  (alpha 0.0 :type rgb-val))
+
+(defun print-render-color (render-color stream depth)
+  (declare (type render-color render-color)
+	   (ignore depth))
+  (print-unreadable-object (render-color stream :type t)
+    (prin1 (render-color-red render-color) stream)
+    (write-string " " stream)
+    (prin1 (render-color-green render-color) stream)
+    (write-string " " stream)
+    (prin1 (render-color-blue render-color) stream)
+    (write-string " " stream)
+    (prin1 (render-color-alpha render-color) stream)))
+
+(defun render-make-color (&key (red 1.0) (green 1.0) (blue 1.0) (alpha 1.0)
+                          &allow-other-keys)
+  (declare (type rgb-val red green blue))
+  (declare (clx-values color))
+  (render-make-color-internal red green blue alpha))
+
+(defun render-color-rgba (render-color)
+  (declare (type render-color render-color))
+  (declare (clx-values red green blue alpha))
+  (values (render-color-red render-color)
+          (render-color-green render-color)
+          (render-color-blue render-color)
+          (render-color-alpha render-color)))
 
 ;; Sanity measures:
 
@@ -672,14 +711,31 @@ by every function, which attempts to generate RENDER requests."
   (let ((display (picture-display picture)))
     (ensure-render-initialized display)
     (synchronise-picture-state picture)
-    (with-buffer-request (display (extension-opcode display "RENDER"))
-      (data +X-RenderFillRectangles+)
-      (render-op op)
-      (pad8 0)
-      (pad16 0)
-      (resource-id (picture-id picture))
-      (card16 (elt color 0)) (card16 (elt color 1)) (card16 (elt color 2)) (card16 (elt color 3))
-      (int16 x1) (int16 y1) (card16 w) (card16 h))))
+    (etypecase color
+      (render-color
+       (with-buffer-request (display (extension-opcode display "RENDER"))
+         (data +X-RenderFillRectangles+)
+         (render-op op)
+         (pad8 0)
+         (pad16 0)
+         (resource-id (picture-id picture))
+         (rgb-val (render-color-red color)
+                  (render-color-green color)
+                  (render-color-blue color)
+                  (render-color-alpha color))
+         (int16 x1) (int16 y1) (card16 w) (card16 h)))
+      (sequence
+       (with-buffer-request (display (extension-opcode display "RENDER"))
+         (data +X-RenderFillRectangles+)
+         (render-op op)
+         (pad8 0)
+         (pad16 0)
+         (resource-id (picture-id picture))
+         (card16 (elt color 0))
+         (card16 (elt color 1))
+         (card16 (elt color 2))
+         (card16 (elt color 3))
+         (int16 x1) (int16 y1) (card16 w) (card16 h))))))
 
 ;; fill rectangles, colors.
 
